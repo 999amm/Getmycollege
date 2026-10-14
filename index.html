@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GetMyCollege compares JEE Main and MHT-CET scores against accessible public cutoff reference datasets directly in your browser.">
+  <meta name="theme-color" content="#f6f5f1">
+  <title>GetMyCollege | College Predictor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=getmycollege-20261013">
+</head>
+<body>
+  <header class="site-header">
+    <section class="institution-header" aria-labelledby="institutionName">
+      <div class="institution-contact">
+        <div class="institution-contact-inner">
+          <a href="tel:02402367576">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 3.1 5.2 2 2 0 0 1 5.1 3h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L9 11a16 16 0 0 0 4 4l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z"/></svg>
+            0240-2367576
+          </a>
+          <a href="mailto:registrar@dietms.org">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>
+            registrar@dietms.org
+          </a>
+        </div>
+      </div>
+      <div class="institution-banner">
+        <div class="institution-logo institution-logo-left">
+          <img src="assets/diems-logo.png" alt="DIEMS logo" width="124" height="124">
+        </div>
+        <div class="institution-logo institution-logo-right">
+          <img src="assets/naac-grade-a.webp" alt="NAAC accredited A grade" width="124" height="93">
+        </div>
+        <div class="institution-content">
+          <p class="institution-organization">Marathwada Shikshan Prasarak Mandal’s</p>
+          <h2 class="institution-name" id="institutionName">Deogiri Institute of Engineering and Management Studies</h2>
+          <p class="institution-autonomous">(An Autonomous Institute)</p>
+          <p class="institution-location">Deogiri Campus, Near Hotel VITS, Railway Station Road, Chhatrapati Sambhajinagar, Maharashtra, India - 431005</p>
+          <ul class="institution-affiliations">
+            <li>Approved by AICTE Delhi, UGC Delhi, D.T.E. and Government of Maharashtra</li>
+            <li>Affiliated to Dr. Babasaheb Ambedkar Technological University, Lonere | B. Tech. | M. Tech.</li>
+            <li>Affiliated to Dr. Babasaheb Ambedkar Marathwada University, Chhatrapati Sambhajinagar | MBA</li>
+          </ul>
+          <p class="institution-accreditations">
+            <span>NBA Accredited</span><span>NAAC Accredited “A” Grade</span><span>ISO 21001:2018 Certified</span><span>NABL Accredited</span><span>NIELIT Accredited</span>
+          </p>
+          <div class="institution-college-code">
+            <span class="institution-code-title">College Code</span>
+            <span class="institution-code-value">EN 2114 | MB 2114</span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <div class="topbar">
+      <a class="brand" href="#top" aria-label="GetMyCollege home">
+        <span class="brand-mark">GM</span>
+        <span class="brand-copy">
+          <span class="brand-name">GetMyCollege</span>
+          <span class="brand-sub">MHT-CET + JEE Main</span>
+        </span>
+      </a>
+      <nav class="header-nav" aria-label="Main navigation">
+        <a href="#formHeading">Predict colleges</a>
+        <a href="#maharashtraDirectory">College directory <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-shell" id="top">
+    <section class="hero">
+      <div class="eyebrow">A CLEARER PATH TO YOUR NEXT CHAPTER</div>
+      <h1>Find the colleges<br><span>your rank can reach.</span></h1>
+      <div class="hero-detail">
+        <p>Compare your score against public cutoff records fetched only when you ask for a prediction. Your score stays in this page; it is not sent to a prediction backend.</p>
+        <a class="hero-link" href="#formHeading">Start your shortlist <span aria-hidden="true">↓</span></a>
+      </div>
+    </section>
+
+    <section class="predictor-card" aria-labelledby="formHeading">
+      <div class="form-heading">
+        <h2 id="formHeading" tabindex="-1">Build your shortlist</h2>
+        <span class="form-step">01 / YOUR DETAILS</span>
+      </div>
+      <div class="exam-tabs" role="tablist" aria-label="Choose entrance exam">
+        <button class="exam-tab" id="mhtTab" type="button" data-exam="mht" role="tab" aria-selected="false">MHT-CET</button>
+        <button class="exam-tab active" id="jeeTab" type="button" data-exam="jee" role="tab" aria-selected="true">JEE Main</button>
+      </div>
+
+      <div class="form-grid">
+        <div class="field field-score">
+          <label for="score" id="scoreLabel">JEE Main All India Rank (CRL / AIR)</label>
+          <div class="input-wrap">
+            <input id="score" name="score" type="number" inputmode="numeric" min="1" max="2000000" step="1" placeholder="e.g. 15000" autocomplete="off" required>
+            <span class="input-suffix" id="scoreSuffix">Rank</span>
+          </div>
+          <small id="scoreHint">For OPEN seats, JoSAA closing ranks use Common Rank List (CRL / AIR). IITs are excluded because IIT admission requires JEE Advanced.</small>
+        </div>
+
+        <div class="field">
+          <label for="category">Category</label>
+          <select id="category" name="category">
+            <option value="OPEN">OPEN / General</option>
+            <option value="OBC">OBC</option>
+            <option value="EWS">EWS</option>
+            <option value="SC">SC</option>
+            <option value="ST">ST</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="gender">Gender</label>
+          <select id="gender" name="gender">
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other / Prefer not to say</option>
+          </select>
+        </div>
+
+        <div class="field" id="domicileField" hidden>
+          <label for="domicile">Maharashtra / All India quota</label>
+          <select id="domicile" name="domicile">
+            <option value="MS">Maharashtra State candidature</option>
+          </select>
+        </div>
+
+        <div class="field field-district" id="districtField" hidden>
+          <label for="district">12th / HSC district</label>
+          <select id="district" name="district">
+            <option value="">Select district</option>
+            <option value="Ahmednagar">Ahmednagar / Ahilyanagar</option>
+            <option value="Akola">Akola</option>
+            <option value="Amravati">Amravati</option>
+            <option value="Aurangabad">Chhatrapati Sambhajinagar (Aurangabad)</option>
+            <option value="Beed">Beed</option>
+            <option value="Bhandara">Bhandara</option>
+            <option value="Buldhana">Buldhana</option>
+            <option value="Chandrapur">Chandrapur</option>
+            <option value="Dhule">Dhule</option>
+            <option value="Gadchiroli">Gadchiroli</option>
+            <option value="Gondia">Gondia</option>
+            <option value="Hingoli">Hingoli</option>
+            <option value="Jalgaon">Jalgaon</option>
+            <option value="Jalna">Jalna</option>
+            <option value="Kolhapur">Kolhapur</option>
+            <option value="Latur">Latur</option>
+            <option value="Mumbai City">Mumbai City</option>
+            <option value="Mumbai Suburban">Mumbai Suburban</option>
+            <option value="Nagpur">Nagpur</option>
+            <option value="Nanded">Nanded</option>
+            <option value="Nandurbar">Nandurbar</option>
+            <option value="Nashik">Nashik</option>
+            <option value="Osmanabad">Dharashiv (Osmanabad)</option>
+            <option value="Palghar">Palghar</option>
+            <option value="Parbhani">Parbhani</option>
+            <option value="Pune">Pune</option>
+            <option value="Raigad">Raigad</option>
+            <option value="Ratnagiri">Ratnagiri</option>
+            <option value="Sangli">Sangli</option>
+            <option value="Satara">Satara</option>
+            <option value="Sindhudurg">Sindhudurg</option>
+            <option value="Solapur">Solapur</option>
+            <option value="Thane">Thane</option>
+            <option value="Wardha">Wardha</option>
+            <option value="Washim">Washim</option>
+            <option value="Yavatmal">Yavatmal</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="branch-section">
+        <div class="section-label" id="branchLabel">Preferred branch</div>
+        <div class="branch-chips" id="branches" role="group" aria-labelledby="branchLabel">
+          <button class="branch-chip active" type="button" data-branch="CSE" aria-pressed="true">CSE</button>
+          <button class="branch-chip" type="button" data-branch="IT" aria-pressed="false">IT</button>
+          <button class="branch-chip" type="button" data-branch="AI" aria-pressed="false">AI / Data Science</button>
+          <button class="branch-chip" type="button" data-branch="ECE" aria-pressed="false">ECE / ENTC</button>
+          <button class="branch-chip" type="button" data-branch="ME" aria-pressed="false">Mechanical</button>
+          <button class="branch-chip" type="button" data-branch="CE" aria-pressed="false">Civil</button>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary-btn" id="predict" type="button">
+          <span id="predictText">Predict my colleges</span><span class="arrow" aria-hidden="true">→</span>
+        </button>
+        <button class="ghost-btn" id="reset" type="button">Reset</button>
+      </div>
+
+      <div class="status-row">
+        <div id="dataState" class="data-state" role="status" aria-live="polite"><span class="state-dot" aria-hidden="true"></span><span id="dataStateText">Ready. Public data is fetched on demand.</span></div>
+      </div>
+      <p class="form-footnote">Your exam inputs and results remain in page memory and are not sent to a GetMyCollege backend. Data is fetched from public source hosts only when needed; those hosts may log ordinary requests. This page does not use localStorage, sessionStorage, IndexedDB, or a student database. Historical cutoffs are comparisons, not admission guarantees. MHT-CET uses accessible historical structured cutoffs and does not yet claim a verified structured 2026–27 All India dataset. The HSC district field is retained for context but is not yet used to calculate home-university eligibility.</p>
+    </section>
+
+    <section class="results-section" id="results" hidden aria-labelledby="resultTitle">
+      <div class="results-head">
+        <div class="results-heading-copy">
+          <div class="eyebrow">PREDICTION RESULTS</div>
+          <h2 id="resultTitle">Your college shortlist</h2>
+          <p id="resultSub">Results compare your score with historical cutoff reference records; they are not admission guarantees.</p>
+        </div>
+        <div class="confidence-card">
+          <div class="confidence-label" id="confidenceLabel">Top fit score</div>
+          <div class="confidence-value" id="confidence">—</div>
+          <div class="confidence-bar" aria-hidden="true"><span id="bar"></span></div>
+          <div class="confidence-caption">Not an admission probability</div>
+        </div>
+      </div>
+
+      <div class="best-card">
+        <div class="best-kicker">TOP RESULT</div>
+        <div class="best-name" id="bestName">No result yet</div>
+        <div class="best-meta" id="bestMeta">Submit your score or rank to see evidence.</div>
+      </div>
+
+      <div class="source-status-grid" id="sourceStatuses" aria-label="Source results"></div>
+      <div class="results-list" id="list"></div>
+    </section>
+
+    <section class="directory-section" id="maharashtraDirectory" hidden aria-labelledby="directoryTitle">
+      <div class="directory-heading">
+        <div>
+          <div class="eyebrow">STATEWIDE COLLEGE INDEX</div>
+          <h2 id="directoryTitle">Maharashtra engineering colleges</h2>
+          <p>Search institutes and course options listed in the Maharashtra first-year engineering CAP seat-matrix dataset. The directory is downloaded only when you use its search or course filter. A directory listing is not a prediction or a guarantee that a course has historical cutoff data.</p>
+        </div>
+        <div class="directory-total" id="directoryStats" role="status" aria-live="polite">Directory not loaded yet</div>
+      </div>
+      <div class="directory-controls">
+        <label class="sr-only" for="directorySearch">Search Maharashtra colleges</label>
+        <input id="directorySearch" type="search" placeholder="Search college, city, institute code, or course…" autocomplete="off">
+        <label class="sr-only" for="directoryProgramFilter">Directory course filter</label>
+        <select id="directoryProgramFilter">
+          <option value="all">All colleges and courses</option>
+          <option value="selected">Only colleges offering selected branch</option>
+        </select>
+      </div>
+      <div class="directory-results" id="directoryResults">
+        <div class="empty-state">The directory has not been downloaded. Focus the search field or choose a course filter to fetch the public CAP directory. No sample colleges will be substituted if the source is unavailable.</div>
+      </div>
+      <div class="directory-actions">
+        <span id="directoryShowing" class="directory-showing"></span>
+        <button class="secondary-btn" id="directoryMore" type="button" hidden>Load more colleges</button>
+      </div>
+      <p class="method-note">Coverage scope: institutes/programs present in the public Maharashtra first-year CAP seat matrix. It is not a universal register of every private university or every direct-admission route in the state. Historical MHT-CET cutoffs are shown separately when available.</p>
+    </section>
+  </main>
+
+  <footer class="footer">GetMyCollege · Public cutoff references and directory coverage where available; estimates are not admission guarantees.</footer>
+  <script src="script.js?v=getmycollege-20261013" defer></script>
+</body>
+</html>
