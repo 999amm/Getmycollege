@@ -57,8 +57,22 @@
       "https://cdn.jsdelivr.net/gh/omkarj920/fe-seat-matrix-2026@main/records.json",
       "https://huggingface.co/spaces/omkarj920/fe-seat-matrix-2026/resolve/main/records.json?download=true",
     ],
-    // Local copy of the supplied Maharashtra & Minority Seats CAP Round I 2025–26 data.
-    // This is separate from the general historical data used for the main shortlist.
+    // Local compact Maharashtra CAP datasets committed in the project's data/ folder.
+    // These are loaded lazily after Predict is pressed, alongside the public feeds.
+    mhtLocalCapFiles: [
+      "./data/maharashtra_cap_round1_2020_21.compact.json",
+      "./data/maharashtra_cap_round1_2023_24.compact.json",
+      "./data/maharashtra_cap_round2_2023_24.compact.json",
+      "./data/maharashtra_cap_round3_2023_24.compact.generated.json",
+      "./data/maharashtra_cap_round1_2024_25.compact.json",
+      "./data/maharashtra_cap_round2_2024_25.compact.json",
+      "./data/maharashtra_cap_round3_2024_25.compact.json",
+      "./data/maharashtra_cap_round1_2025_26.compact.json",
+      "./data/maharashtra_cap_round2_2025_26.compact.json",
+      "./data/maharashtra_cap_round3_2025_26.compact.json",
+      "./data/maharashtra_cap_round4_2025_26.compact.json",
+    ],
+    // Kept for the dedicated +1/+2/+3 percentile comparison cards.
     mhtCap1Scenario: [
       "./data/maharashtra_cap_round1_2025_26.compact.json",
       "data/maharashtra_cap_round1_2025_26.compact.json",
@@ -101,6 +115,8 @@
   const districtInput = $("district");
   const domicileField = $("domicileField");
   const districtField = $("districtField");
+  const collegeRegionField = $("collegeRegionField");
+  const collegeRegionInput = $("collegeRegion");
   const predictButton = $("predict");
   const predictText = $("predictText");
   const dataState = $("dataState");
@@ -116,6 +132,20 @@
   const bestMeta = $("bestMeta");
   const sourceStatuses = $("sourceStatuses");
   const resultsList = $("list");
+
+  // Compact college-information layout; injected here so the existing styles.css can remain unchanged.
+  if (!$("collegeDetailsStyles")) {
+    const collegeDetailsStyle = document.createElement("style");
+    collegeDetailsStyle.id = "collegeDetailsStyles";
+    collegeDetailsStyle.textContent = `
+      .college-branch-line { color: var(--text, #233448); font-size: 12px; font-weight: 600; line-height: 1.6; }
+      .college-details { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 7px; color: var(--muted, #586773); font-size: 12px; line-height: 1.6; }
+      .college-detail { min-width: 0; overflow-wrap: anywhere; }
+      .college-detail strong { color: var(--text, #233448); font-weight: 600; }
+      @media (max-width: 540px) { .college-details { display: grid; grid-template-columns: 1fr; gap: 3px; } }
+    `;
+    document.head.appendChild(collegeDetailsStyle);
+  }
 
   // Keep the original HTML untouched: create the optional percentile-comparison
   // section beside the main results list only when it is not already present.
@@ -220,6 +250,7 @@
       tab.setAttribute("aria-selected", String(active));
     });
     if (directorySection) directorySection.hidden = exam === "jee";
+    if (collegeRegionField) collegeRegionField.hidden = exam !== "mht";
     if (exam === "jee") {
       scoreLabel.textContent = categoryInput.value === "OPEN" ? "JEE Main All India Rank (CRL / AIR)" : "JEE Main category rank";
       scoreInput.min = "1";
@@ -643,12 +674,20 @@
       const gender = String(get(row, ["gender", "gender_seat", "genderseat"])).trim();
       const seatLevel = String(get(row, ["seat_level", "seat level", "seat_pool", "quota_level", "level"])).trim();
       const stage = String(get(row, ["stage", "allotment_stage"])).trim();
+      const district = String(get(row, ["district", "college_district", "institute_district"])).trim();
+      const city = String(get(row, ["city", "town", "college_city", "institute_city"])).trim();
+      const locationText = String(get(row, ["location", "address", "college_location", "institute_location"])).trim();
+      const regionName = String(get(row, ["region", "dte_region", "admission_region"])).trim();
       const collegeKey = String(get(row, ["college_code", "institute_code", "inst_code"])).trim().replace(/\.0$/, "");
       const courseCode = String(get(row, ["course_code", "choice_code"])).trim();
       if (!college || !branch || !year || year < 2020 || year > 2026 || !category || percentile === null || percentile < 0 || percentile > 100) continue;
       const key = `${collegeKey || college.toLowerCase()}|${branch.toLowerCase()}`;
-      if (!mapped.has(key)) mapped.set(key, { instCode: collegeKey, instName: college, branches: [] });
+      if (!mapped.has(key)) mapped.set(key, { instCode: collegeKey, instName: college, district, city, locationText, regionName, branches: [] });
       const target = mapped.get(key);
+      if (!target.district && district) target.district = district;
+      if (!target.city && city) target.city = city;
+      if (!target.locationText && locationText) target.locationText = locationText;
+      if (!target.regionName && regionName) target.regionName = regionName;
       let course = target.branches.find((item) => item.name.toLowerCase() === branch.toLowerCase());
       if (!course) { course = { code: courseCode, name: branch, cutoffsByYear: [] }; target.branches.push(course); }
       if (!course.code && courseCode) course.code = courseCode;
@@ -658,22 +697,86 @@
     return [...mapped.values()];
   }
 
+  function parseLocalCompactCap(payload, fallbackUrl = "local compact CAP JSON") {
+    if (!Array.isArray(payload?.rows) || !Array.isArray(payload?.columns)) return [];
+    const columnIndex = Object.fromEntries(payload.columns.map((name, index) => [String(name), index]));
+    const at = (row, key) => row[columnIndex[key]];
+    const academicYear = String(payload.metadata?.academicYear || "").trim();
+    const yearMatch = academicYear.match(/20\d{2}/);
+    const year = yearMatch ? Number(yearMatch[0]) : null;
+    const round = Number(payload.metadata?.capRound);
+    if (!year || !Number.isInteger(round)) return [];
+
+    const colleges = new Map();
+    for (const row of payload.rows) {
+      const collegeCode = String(at(row, "instituteCode") ?? "").trim();
+      const collegeName = String(at(row, "collegeName") ?? "").trim();
+      const courseCode = String(at(row, "courseCode") ?? "").trim();
+      const branchName = String(at(row, "branchName") ?? "").trim();
+      const category = String(at(row, "category") ?? "").trim().toUpperCase();
+      const percentile = numberValue(at(row, "percentile"));
+      if (!collegeName || !branchName || !category || percentile === null || percentile < 0 || percentile > 100) continue;
+      const collegeKey = `${collegeCode || collegeName.toLowerCase()}`;
+      if (!colleges.has(collegeKey)) colleges.set(collegeKey, { code: collegeCode, name: collegeName, branches: [] });
+      const college = colleges.get(collegeKey);
+      let branch = college.branches.find(item =>
+        (courseCode && String(item.code || "") === courseCode) ||
+        (!courseCode && String(item.name || "").toLowerCase() === branchName.toLowerCase())
+      );
+      if (!branch) {
+        branch = { code: courseCode, name: branchName, cutoffsByYear: [] };
+        college.branches.push(branch);
+      }
+      branch.cutoffsByYear.push({
+        year,
+        academicYear,
+        round: `Round ${round}`,
+        category,
+        percentile,
+        rank: numberValue(at(row, "meritRank")),
+        seatLevel: String(at(row, "seatPool") ?? "").trim(),
+        stage: String(at(row, "allotmentStage") ?? "").trim(),
+        homeUniversity: at(row, "homeUniversity") ?? null,
+        source: `${payload.metadata?.title || "Maharashtra CAP cutoff"} · ${academicYear} · ${fallbackUrl}`,
+      });
+    }
+    return [...colleges.values()];
+  }
+
+  async function loadLocalCompactCapFiles() {
+    const settled = await Promise.allSettled(DATA_URLS.mhtLocalCapFiles.map(async (url) => {
+      const { payload } = await fetchJsonFromAny([url], value =>
+        Array.isArray(value?.rows) && Array.isArray(value?.columns) && value.rows.length > 0, 20000);
+      return { url, colleges: parseLocalCompactCap(payload, url), rowCount: payload.rows.length };
+    }));
+    const loaded = settled.filter(item => item.status === "fulfilled").map(item => item.value);
+    state.mhtLocalCapStatus = {
+      loaded: loaded.length,
+      total: DATA_URLS.mhtLocalCapFiles.length,
+      files: loaded.map(item => ({ url: item.url, rows: item.rowCount })),
+      errors: settled.filter(item => item.status === "rejected").map(item => item.reason?.message || "Local CAP file unavailable"),
+    };
+    return loaded.flatMap(item => item.colleges);
+  }
+
   async function loadMhtCutoffs() {
     if (state.mhtData) return state.mhtData;
     const attempts = await Promise.allSettled([
       fetchJsonFromAny(DATA_URLS.mhtCutoffs, hasMhtCutoffs).then(({ payload }) => asArrayPayload(payload)),
       fetchTextFromAny(DATA_URLS.mhtHistoricalCsv, (body) => body.length > 1000 && /closing[_ ]?percentile|cutoff[_ ]?percentile|percentile/i.test(body.slice(0, 5000)), 45000).then(({ text }) => parseMhtHistoricalCsv(text)),
+      loadLocalCompactCapFiles(),
     ]);
     const jsonRows = attempts[0].status === "fulfilled" ? attempts[0].value : [];
     const historicalRows = attempts[1].status === "fulfilled" ? attempts[1].value : [];
-    const merged = [...jsonRows, ...historicalRows];
+    const localRows = attempts[2].status === "fulfilled" ? attempts[2].value : [];
+    const merged = [...jsonRows, ...historicalRows, ...localRows];
     if (!merged.length) {
       const errors = attempts.filter((item) => item.status === "rejected").map((item) => item.reason?.message || "Source unavailable");
       throw new Error(`No structured MHT-CET cutoff source could be read. ${errors.join("; ")}`);
     }
     state.mhtData = merged;
     state.mhtHistoryIndex = buildMhtHistoryIndex(merged);
-    state.mhtDataSourceYears = historicalRows.length ? "2022–23 through 2025–26 public CAP CSV plus any legacy dated records" : "legacy structured CAP records; historical CSV unavailable";
+    state.mhtDataSourceYears = `${localRows.length ? "Local Maharashtra CAP JSON files plus " : ""}${historicalRows.length ? "2022–23 through 2025–26 public CAP CSV" : "public historical CSV unavailable"}${jsonRows.length ? " and legacy structured CAP records" : ""}; ${state.mhtLocalCapStatus?.loaded || 0}/${state.mhtLocalCapStatus?.total || 0} local files loaded`;
     return merged;
   }
 
@@ -686,8 +789,12 @@
       intake: Number.isFinite(Number(row.intake)) ? Number(row.intake) : null,
       msSeats: Number.isFinite(Number(row.msSeats)) ? Number(row.msSeats) : null,
       allIndiaSeats: Number.isFinite(Number(row.allIndia)) ? Number(row.allIndia) : null,
-      status: String(row.status || "CAP participating institute"),
+      status: String(row.status || "").trim(),
       university: String(row.university || ""),
+      district: String(row.district || row.instDistrict || row.collegeDistrict || "").trim(),
+      city: String(row.city || row.town || row.collegeCity || "").trim(),
+      locationText: String(row.location || row.address || row.collegeLocation || "").trim(),
+      regionName: String(row.region || row.dteRegion || "").trim(),
     }));
   }
 
@@ -695,8 +802,14 @@
     const map = new Map();
     for (const row of rows) {
       const key = row.instituteCode || row.instituteName.toLowerCase();
-      if (!map.has(key)) map.set(key, { code: row.instituteCode, name: row.instituteName, status: row.status, university: row.university, courses: [], courseCodes: new Set() });
+      if (!map.has(key)) map.set(key, { code: row.instituteCode, name: row.instituteName, status: row.status, university: row.university, district: row.district, city: row.city, locationText: row.locationText, regionName: row.regionName, courses: [], courseCodes: new Set() });
       const item = map.get(key);
+      if (!item.status && row.status) item.status = row.status;
+      if (!item.university && row.university) item.university = row.university;
+      if (!item.district && row.district) item.district = row.district;
+      if (!item.city && row.city) item.city = row.city;
+      if (!item.locationText && row.locationText) item.locationText = row.locationText;
+      if (!item.regionName && row.regionName) item.regionName = row.regionName;
       const courseKey = `${row.choiceCode}|${row.courseName}`;
       if (row.courseName && !item.courseCodes.has(courseKey)) {
         item.courseCodes.add(courseKey);
@@ -734,6 +847,61 @@
     return state.directoryLoadPromise;
   }
 
+  // College-location grouping for the optional MHT-CET region filter.
+  // Prefer explicit city/district metadata from a source; when it is unavailable,
+  // use well-known localities and established institute aliases in the college name.
+  function normaliseLocationText(value) {
+    return String(value || "").toLowerCase()
+      .replace(/&/g, " and ")
+      .replace(/[’']/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function inferMhtCollegeRegion({ name = "", district = "", city = "", locationText = "" } = {}) {
+    const explicitLocation = normaliseLocationText([city, district, locationText].filter(Boolean).join(" "));
+    const collegeName = normaliseLocationText(name);
+    const text = `${explicitLocation} ${collegeName}`.trim();
+
+    // Navi Mumbai/Thane is tested first so "Navi Mumbai" is never grouped as Mumbai.
+    if (/\b(navi mumbai|thane|kalyan|dombivli|vashi|nerul|belapur|panvel|airoli|ghansoli|koparkhairane|kopar khairane|khargar|kharghar|ambernath|badlapur|ulhasnagar|bhiwandi|mira road|mira bhayandar|vasai|virar)\b/.test(text)) return "navi-thane";
+    if (/\b(ramrao adik institute of technology|sies graduate school of technology|terna engineering college|fr c rodrigues institute of technology|pillai college of engineering)\b/.test(collegeName)) return "navi-thane";
+    if (/\b(mumbai|vile parle|andheri|bandra|borivali|kandivali|goregaon|ghatkopar|chembur|powai|juhu|malad|santacruz|santa cruz|matunga|dadar|wadala|parel|worli|kurla|mulund|bhandup|dahisar|fort mumbai|churchgate|colaba|vikhroli)\b/.test(text)) return "mumbai";
+    if (/\b(pune|pimpri|chinchwad|akurdi|alandi|baramati|talegaon|narhe|hinjawadi|hinjewadi|kothrud|hadapsar|dhankawadi|wagholi|lohegaon|vadgaon|bavdhan|kondhwa|baner|loni kalbhor|shirur|uruli kanchan)\b/.test(text)) return "pune";
+    if (/\b(chhatrapati sambhajinagar|sambhajinagar|aurangabad)\b/.test(text)) return "sambhajinagar";
+    if (/\b(nashik|nasik|sinnar|igatpuri|dindori)\b/.test(text)) return "nashik";
+    if (/\b(nagpur|hingna|wanadongri|butibori)\b/.test(text)) return "nagpur";
+    if (/\b(amravati|badnera)\b/.test(text)) return "amravati";
+    if (/\b(kolhapur|warananagar|atigre|kagal|panhala)\b/.test(text)) return "kolhapur";
+
+    // Widely known institute names whose city is not always written in the official title.
+    if (/\b(veermata jijabai|vjti|sardar patel institute of technology|spit mumbai|dwarkadas j sanghvi|d j sanghvi|djsce|thadomal shahani|tsec|k j somaiya|kj somaiya|vivekanand education societys institute of technology|vesit|shah and anchor|thakur college of engineering|atharva college of engineering|rizvi college of engineering|rajiv gandhi institute of technology|xavier institute of engineering|don bosco institute of technology|vidyalankar institute of technology|fr conceicao rodrigues college)\b/.test(collegeName)) return "mumbai";
+    if (/\b(coep|college of engineering pune|pune institute of computer technology|pict|vishwakarma institute of technology|vit pune|vishwakarma institute of information technology|viit|pimpri chinchwad college of engineering|pccoe|army institute of technology|cummins college of engineering|aissms|sinhgad college of engineering|modern college of engineering|mit academy of engineering|mit aoe|mit world peace university)\b/.test(collegeName)) return "pune";
+    if (/\b(government college of engineering aurangabad|deogiri institute|jawaharlal nehru engineering college|jn e c|mgm jawaharlal nehru|csmss|marathwada institute of technology)\b/.test(collegeName)) return "sambhajinagar";
+    if (/\b(ramdeobaba|rcoem|rbu nagpur|yeshwantrao chavan college of engineering|ycce|visvesvaraya national institute of technology|vnit|gh raisoni college of engineering nagpur|priyadarshini college of engineering)\b/.test(collegeName)) return "nagpur";
+    if (/\b(k k wagh|kk wagh|met bhujbal|sandip foundation|sandip institute of technology|government college of engineering nashik)\b/.test(collegeName)) return "nashik";
+    if (/\b(prof ram meghe|ram meghe institute|sipna college|government college of engineering amravati|pr pote)\b/.test(collegeName)) return "amravati";
+    if (/\b(kit kolhapur|kolhapur institute of technology|dy patil college of engineering kolhapur|d y patil college of engineering kolhapur|sanjay ghodawat)\b/.test(collegeName)) return "kolhapur";
+
+    // The CAP cutoff sources are Maharashtra-specific. Any college without a
+    // recognizable city is grouped here, making unclassified records discoverable.
+    return "other";
+  }
+
+  function filterMhtRowsByRegion(rows, selectedRegion) {
+    if (!selectedRegion || selectedRegion === "all") return rows;
+    return rows.filter((row) => {
+      const detected = row.locationRegion || inferMhtCollegeRegion({ name: row.college, district: row.district, city: row.city, locationText: row.locationText });
+      return detected === selectedRegion;
+    });
+  }
+
+  function mhtCollegeMatchesSelectedRegion(collegeName, selectedRegion) {
+    if (!selectedRegion || selectedRegion === "all") return true;
+    return inferMhtCollegeRegion({ name: collegeName }) === selectedRegion;
+  }
+
   function mhtBranchMatches(name, requested) {
     const text = String(name || "");
     if (requested === "CSE") return /computer science|computer engineering/i.test(text) && !/artificial intelligence|data science|machine learning|internet of things|cyber security/i.test(text);
@@ -751,8 +919,14 @@
     const nameKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     for (const row of directoryRows || []) {
       const key = row.instituteCode || nameKey(row.instituteName);
-      if (!map.has(key)) map.set(key, { code: row.instituteCode, name: row.instituteName, branches: [], _branchKeys: new Set() });
+      if (!map.has(key)) map.set(key, { code: row.instituteCode, name: row.instituteName, status: row.status || "", university: row.university || "", district: row.district || "", city: row.city || "", locationText: row.locationText || "", regionName: row.regionName || "", branches: [], _branchKeys: new Set() });
       const college = map.get(key);
+      if (!college.status && row.status) college.status = row.status;
+      if (!college.university && row.university) college.university = row.university;
+      if (!college.district && row.district) college.district = row.district;
+      if (!college.city && row.city) college.city = row.city;
+      if (!college.locationText && row.locationText) college.locationText = row.locationText;
+      if (!college.regionName && row.regionName) college.regionName = row.regionName;
       const branchKey = row.choiceCode || nameKey(row.courseName);
       if (!college._branchKeys.has(branchKey)) {
         college._branchKeys.add(branchKey);
@@ -764,23 +938,43 @@
       const collegeCode = String(cutoffCollege.code || cutoffCollege.instCode || "").trim();
       let target = map.get(collegeCode) || byName.get(nameKey(cutoffCollege.name || cutoffCollege.instName || cutoffCollege.collegeName));
       if (!target) {
-        target = { code: collegeCode, name: cutoffCollege.name || cutoffCollege.instName || cutoffCollege.collegeName || "Unknown institute", branches: [], _branchKeys: new Set() };
+        target = { code: collegeCode, name: cutoffCollege.name || cutoffCollege.instName || cutoffCollege.collegeName || "Unknown institute", status: cutoffCollege.status || cutoffCollege.instituteStatus || cutoffCollege.institutionType || cutoffCollege.type || "", university: cutoffCollege.university || cutoffCollege.affiliatingUniversity || cutoffCollege.affiliatedUniversity || "", district: cutoffCollege.district || "", city: cutoffCollege.city || "", locationText: cutoffCollege.locationText || "", regionName: cutoffCollege.regionName || "", branches: [], _branchKeys: new Set() };
         map.set(collegeCode || nameKey(target.name), target);
         byName.set(nameKey(target.name), target);
       }
+      if (!target.status) target.status = cutoffCollege.status || cutoffCollege.instituteStatus || cutoffCollege.institutionType || cutoffCollege.type || "";
+      if (!target.university) target.university = cutoffCollege.university || cutoffCollege.affiliatingUniversity || cutoffCollege.affiliatedUniversity || "";
+      if (!target.district && cutoffCollege.district) target.district = cutoffCollege.district;
+      if (!target.city && cutoffCollege.city) target.city = cutoffCollege.city;
+      if (!target.locationText && cutoffCollege.locationText) target.locationText = cutoffCollege.locationText;
+      if (!target.regionName && cutoffCollege.regionName) target.regionName = cutoffCollege.regionName;
       const branches = Array.isArray(cutoffCollege.branches) ? cutoffCollege.branches : Array.isArray(cutoffCollege.courses) ? cutoffCollege.courses : [];
       for (const cutoffBranch of branches) {
         const branchCode = String(cutoffBranch.code || cutoffBranch.choiceCode || "").trim();
         const branchName = cutoffBranch.name || cutoffBranch.courseName || "";
         let branchTarget = branchCode ? target.branches.find((branch) => String(branch.code || branch.choiceCode || "").trim() === branchCode) : null;
         if (!branchTarget) branchTarget = target.branches.find((branch) => nameKey(branch.name || branch.courseName) === nameKey(branchName));
-        if (branchTarget) Object.assign(branchTarget, cutoffBranch, { directoryOnly: false });
-        else target.branches.push({ ...cutoffBranch, directoryOnly: false });
+        if (branchTarget) {
+          const existingHistory = Array.isArray(branchTarget.cutoffsByYear) ? branchTarget.cutoffsByYear : [];
+          const incomingHistory = Array.isArray(cutoffBranch.cutoffsByYear) ? cutoffBranch.cutoffsByYear : [];
+          Object.assign(branchTarget, cutoffBranch, { directoryOnly: false });
+          // Multiple local files can contain the same college/course across years or rounds.
+          // Preserve all historical entries instead of overwriting earlier rounds.
+          if (existingHistory.length || incomingHistory.length) {
+            branchTarget.cutoffsByYear = [...existingHistory, ...incomingHistory];
+          }
+        } else target.branches.push({ ...cutoffBranch, directoryOnly: false });
       }
     }
     return [...map.values()].map((college) => ({
       code: college.code,
       name: college.name,
+      district: college.district || "",
+      city: college.city || "",
+      locationText: college.locationText || "",
+      regionName: college.regionName || "",
+      status: college.status || "",
+      university: college.university || "",
       branches: (college.branches || []).map((branch) => { const copy = { ...branch }; delete copy.directoryOnly; return copy; }),
     })).filter((college) => college.name && college.branches.length);
   }
@@ -827,9 +1021,17 @@
         for (const chosen of [...entries, ...historical]) {
           const assessment = assessMht(percentile, chosen.percentile);
           const yearLabel = chosen.year ? `${chosen.year} CAP ${chosen.round || "reference"}` : "Historical CAP reference";
+          const resultCollegeName = college.name || college.instName || college.collegeName || "Unknown institute";
           mapped.push({
-            college: college.name || college.instName || college.collegeName || "Unknown institute",
+            college: resultCollegeName,
             collegeCode: String(college.code || college.instCode || college.instituteCode || "").trim(),
+            district: college.district || "",
+            city: college.city || "",
+            locationText: college.locationText || "",
+            regionName: college.regionName || "",
+            instituteStatus: college.status || college.instituteStatus || college.institutionType || college.type || "",
+            university: college.university || college.affiliatingUniversity || college.affiliatedUniversity || "",
+            locationRegion: inferMhtCollegeRegion({ name: resultCollegeName, district: college.district, city: college.city, locationText: college.locationText }),
             branch: branchName,
             branchCode: String(item.code || item.courseCode || item.choiceCode || "").trim(),
             cutoffPercentile: chosen.percentile,
@@ -1058,8 +1260,7 @@
       if (!yearly.length) {
         const official = MHT_OFFICIAL_YEAR_SOURCES[year];
         const sourceLink = official ? ` <a href="${official.url}" target="_blank" rel="noopener noreferrer">${escapeHTML(official.label)} ↗</a>` : "";
-        const isPdfOnlyYear = year === 2020 || year === 2021;
-        tbody.push(`<tr><td>${year}</td><td colspan="5">${isPdfOnlyYear ? "The official cutoff is available as a PDF, but this app has not converted it into structured values." : "No matching structured row loaded for this college, branch and selected category."}${sourceLink}</td></tr>`);
+        tbody.push(`<tr><td>${year}</td><td colspan="5">No matching structured row loaded for this college, branch and selected category.${sourceLink}</td></tr>`);
         continue;
       }
       for (const row of yearly) {
@@ -1071,7 +1272,7 @@
         tbody.push(`<tr><td>${escapeHTML(row.academicYear || String(year))}</td><td>${escapeHTML(roundText)}</td><td>${escapeHTML(seatText || row.category)}</td><td>${Number(row.percentile).toFixed(4)}%</td><td>${escapeHTML(rank)}</td><td>${escapeHTML(sourceLabel)}${official ? ` <a href="${official.url}" target="_blank" rel="noopener noreferrer">Official ↗</a>` : ""}</td></tr>`);
       }
     }
-    return `<div class="cutoff-history-inner"><p class="cutoff-history-summary">${escapeHTML(result.branch)} · Selected category: ${escapeHTML(categoryInput?.value || "OPEN")} · Maharashtra-seat rows only; All India seat rows are excluded.</p><div class="cutoff-history-table-wrap"><table class="cutoff-history-table"><thead><tr><th>Year</th><th>CAP round</th><th>Seat code / level</th><th>Closing percentile</th><th>Merit rank</th><th>Source</th></tr></thead><tbody>${tbody.join("")}</tbody></table></div><p class="cutoff-history-note">Structured year/round values are shown when present in the connected dataset (documented for academic cycles 2022–23 through 2025–26, with any additional dated rows shown if a legacy source supplies them). For 2020–2021, the app links to official cutoff PDFs instead of inventing numeric values. A missing structured row does not prove the college had no cutoff or no seats.</p></div>`;
+    return `<div class="cutoff-history-inner"><p class="cutoff-history-summary">${escapeHTML(result.branch)} · Selected category: ${escapeHTML(categoryInput?.value || "OPEN")} · Maharashtra-seat rows only; All India seat rows are excluded.</p><div class="cutoff-history-table-wrap"><table class="cutoff-history-table"><thead><tr><th>Year</th><th>CAP round</th><th>Seat code / level</th><th>Closing percentile</th><th>Merit rank</th><th>Source</th></tr></thead><tbody>${tbody.join("")}</tbody></table></div><p class="cutoff-history-note">Structured year/round values are shown when present in the connected local CAP JSON files or public datasets. A missing structured row does not prove the college had no cutoff or no seats; check the linked official source for confirmation.</p></div>`;
   }
 
   function bindCutoffHistoryButtons(rows, exam) {
@@ -1098,6 +1299,64 @@
     });
   }
 
+  function collegeAutonomyLabel(result) {
+    const status = String(result.instituteStatus || result.status || result.institutionType || result.type || "").trim();
+    const university = String(result.university || "").trim();
+    const sourceText = `${status} ${university}`.toLowerCase();
+    if (/\bnon[\s-]?autonomous\b/.test(sourceText)) return "Non-autonomous";
+    if (/\bautonomous\b/.test(sourceText)) return "Autonomous";
+    // The CAP seat matrix has an explicit institute-status field. A populated
+    // status that does not identify the institute as autonomous is treated as
+    // non-autonomous; absent/generic metadata is kept unverified.
+    if (status && !/cap participating institute/i.test(status)) return "Non-autonomous";
+    return "Not specified in source";
+  }
+
+  function collegeUniversityLabel(result) {
+    const university = String(result.university || result.affiliatingUniversity || result.affiliatedUniversity || "").trim();
+    if (!university || /^autonomous institute$/i.test(university) || /^(unknown|not available|not specified|n\/a|na)$/i.test(university)) {
+      return "Not listed in CAP data";
+    }
+    return university;
+  }
+
+  function collegeLocationLabel(result) {
+    const city = String(result.city || "").trim();
+    const district = String(result.district || "").trim();
+    const location = [...new Set([city, district].filter(Boolean))];
+    if (location.length) return location.join(", ");
+    const region = String(result.regionName || "").trim();
+    if (region) return region;
+    const detected = result.locationRegion || inferMhtCollegeRegion({
+      name: result.college,
+      district: result.district,
+      city: result.city,
+      locationText: result.locationText,
+    });
+    const labels = {
+      mumbai: "Mumbai (inferred from institute name)",
+      pune: "Pune (inferred from institute name)",
+      "navi-thane": "Navi Mumbai / Thane (inferred)",
+      nashik: "Nashik (inferred from institute name)",
+      sambhajinagar: "Chhatrapati Sambhajinagar (inferred)",
+      nagpur: "Nagpur (inferred from institute name)",
+      amravati: "Amravati (inferred from institute name)",
+      kolhapur: "Kolhapur (inferred from institute name)",
+    };
+    return labels[detected] || "Not listed in CAP data";
+  }
+
+  function renderCollegeDetails(result) {
+    const details = [
+      ["Autonomy", collegeAutonomyLabel(result)],
+      ["University", collegeUniversityLabel(result)],
+      ["Location", collegeLocationLabel(result)],
+    ];
+    return `<div class="college-details" aria-label="College details">${details.map(([label, value]) =>
+      `<span class="college-detail"><strong>${escapeHTML(label)}:</strong> ${escapeHTML(value)}</span>`
+    ).join("")}</div>`;
+  }
+
   function resultCard(result, index, exam) {
     const cutoff = exam === "jee"
       ? `Closing rank: ${result.cutoffRank.toLocaleString("en-IN")}`
@@ -1109,20 +1368,21 @@
       ? "Quota eligibility depends on the counselling rules and candidate details."
       : "";
     const notice = [result.source || result.year, quotaNote].filter(Boolean).join(" · ");
+    const metaMarkup = exam === "jee"
+      ? `<div class="result-meta">${escapeHTML(admissionMeta)}<br>${escapeHTML(cutoff)}<br>${escapeHTML(notice)}</div>`
+      : `<div class="result-meta"><div class="college-branch-line">Branch: ${escapeHTML(result.branch || "Not specified")}</div>${renderCollegeDetails(result)}</div>`;
+    const tagsMarkup = exam === "jee"
+      ? `<span class="tag ${result.assessment.band}">${escapeHTML(result.assessment.label)}</span><span class="tag">${escapeHTML(result.year)}</span>`
+      : `<span class="tag ${result.assessment.band}">${escapeHTML(result.assessment.label)}</span>`;
     return `
       <article class="result-card">
         <div class="result-top">
           <div class="result-main">
             <div class="result-name">${index + 1}. ${escapeHTML(result.college)}</div>
-            <div class="result-meta">${escapeHTML(admissionMeta)}<br>${escapeHTML(cutoff)}<br>${escapeHTML(notice)}</div>
+            ${metaMarkup}
           </div>
         </div>
-        <div class="result-tags">
-  <span class="tag ${result.assessment.band}">
-    ${escapeHTML(result.assessment.label)}
-  </span>
-  <span class="tag">${escapeHTML(result.year)}</span>
-</div>
+        <div class="result-tags">${tagsMarkup}</div>
 
 <a
   class="college-dunia-link"
@@ -1359,7 +1619,9 @@
     });
     try {
       const data = await loadMhtCap1ScenarioData();
-      const scoped = data.filter((row) => cap1CategoryMatches(row, category, gender, branch));
+      const selectedRegion = collegeRegionInput?.value || "all";
+      const scoped = data.filter((row) => cap1CategoryMatches(row, category, gender, branch)
+        && mhtCollegeMatchesSelectedRegion(row.college, selectedRegion));
       const baselineCollegeKeys = new Set(scoped.filter((row) => row.percentile <= basePercentile + 0.000001).map(scenarioCollegeKey));
       const baselineCourseKeys = new Set(scoped.filter((row) => row.percentile <= basePercentile + 0.000001).map(scenarioCourseKey));
       const alreadyWithinCutoff = new Set((currentRows || [])
@@ -1425,12 +1687,16 @@
     resultTitle.textContent = exam === "jee" ? "JEE Main college shortlist" : "MHT-CET college shortlist";
     resultSub.textContent = exam === "jee"
       ? "All qualifying non-IIT B.Tech records available in the connected JoSAA/CSAB cutoff datasets are shown, including NITs, IIITs and GFTIs; the consolidated historical archive adds 2025 where available. IITs are excluded because they require JEE Advanced. This is not a complete census of private/state-level JEE-accepting colleges; those need their own verified cutoff sources."
-      : "Compared against year- and round-labelled MHT-CET CAP cutoff records available in the connected public datasets. The structured historical CSV documents academic cycles 2022–23 through 2025–26; official 2020–2021 cutoff PDFs are linked for verification but are not silently treated as structured numeric rows.";
+      : `Compared against year- and round-labelled MHT-CET CAP cutoff records from local Maharashtra CAP JSON files and connected public datasets. Results depend on which files load successfully; historical cutoffs are references, not admission guarantees.${collegeRegionInput?.value && collegeRegionInput.value !== "all" ? ` Location filter: ${collegeRegionInput.options[collegeRegionInput.selectedIndex]?.text || collegeRegionInput.value}. Location may be inferred from available source metadata or institute names; verify the official college address.` : ""}`;
 
     if (!rows.length) {
+      const regionIsSelected = exam === "mht" && collegeRegionInput?.value && collegeRegionInput.value !== "all";
+      const regionLabel = regionIsSelected ? (collegeRegionInput.options[collegeRegionInput.selectedIndex]?.text || collegeRegionInput.value) : "";
       bestName.textContent = "No matching cutoff records";
-      bestMeta.textContent = "No qualifying records were found in the downloaded source for these filters. The app has not invented fallback results.";
-      resultsList.innerHTML = `<div class="empty-state">No records matched these filters. Try another branch/category or retry when the public source is available. A source may be reachable but still contain no matching cutoff rows.</div>`;
+      bestMeta.textContent = regionIsSelected
+        ? `No qualifying cutoff records were found for ${regionLabel} with these filters. The app has not invented fallback results.`
+        : "No qualifying records were found in the downloaded source for these filters. The app has not invented fallback results.";
+      resultsList.innerHTML = `<div class="empty-state">No records matched these filters. Try another branch/category or retry when the public source is available.${regionIsSelected ? ` You can also set the region to <strong>Anywhere in Maharashtra</strong> and run Predict again. Some source records do not clearly identify a college city.` : ""} A source may be reachable but still contain no matching cutoff rows.</div>`;
     } else {
       const top = rows[0];
       bestName.textContent = top.college;
@@ -1457,7 +1723,7 @@
       if (missingYears.length) cards.push(sourceCard("Historical source note", "Partial history", `Unavailable snapshots: ${missingYears.join(", ")}. 2026 records are still used when available.`, true));
     } else {
       cards.push(sourceCard("MHT-CET historical CAP cutoffs", state.mhtData ? "Dataset loaded" : "Unavailable", `${sourceRows.toLocaleString("en-IN")} cutoff buckets counted. ${state.mhtDataSourceYears || "Coverage depends on which public sources loaded successfully."}`, !state.mhtData));
-      cards.push(sourceCard("2020–2021 official archive", "Reference links", "2020–2021 official cutoff archives are published as PDFs. These older PDF tables are not counted as structured prediction rows unless a matching CSV record was loaded.", false));
+      cards.push(sourceCard("Local Maharashtra CAP JSON", `${state.mhtLocalCapStatus?.loaded || 0}/${state.mhtLocalCapStatus?.total || 0} files loaded`, "Local year/round datasets are included in cutoff matching and history when available. Some extracted category/value mappings still need record-level verification against the source PDF.", Boolean(state.mhtLocalCapStatus && state.mhtLocalCapStatus.loaded === 0)));
       cards.push(sourceCard("Maharashtra 2026–27 directory", state.mhtDirectoryRecords ? "Directory loaded" : "Not loaded", state.mhtDirectoryRecords ? `${state.directoryInstitutes.length.toLocaleString("en-IN")} institutes` : "Directory loads when you use its search/filter.", false));
     }
     cards.push(sourceCard("Prediction method", "Ran in this browser", "No arbitrary /100 fit score is displayed. Student ranks are not included in public-data request URLs; no app backend or persistent browser storage is used."));
@@ -1542,7 +1808,11 @@
         let directoryRows = state.mhtDirectoryRecords;
         if (!directoryRows) directoryRows = await ensureDirectoryLoaded();
         const merged = mergeMhtCutoffsWithDirectory(cutoffData, directoryRows || []);
-        let rows = mapMhtResults(merged.length ? merged : cutoffData, value, categoryInput.value, genderInput.value, state.branch).slice(0, MAX_RESULTS);
+        const selectedRegion = collegeRegionInput?.value || "all";
+        let rows = filterMhtRowsByRegion(
+          mapMhtResults(merged.length ? merged : cutoffData, value, categoryInput.value, genderInput.value, state.branch),
+          selectedRegion
+        ).slice(0, MAX_RESULTS);
         // If the broad historical feeds contain no rows for these filters, try the
         // dedicated Maharashtra CAP Round-I records when they are actually available.
         // This does not invent results and does not alter JEE matching.
@@ -1561,7 +1831,10 @@
               }
               course.cutoffsByYear.push({ year: 2025, round: "Round I", category: item.category, percentile: item.percentile, rank: item.meritRank });
             }
-            const capFallback = mapMhtResults([...grouped.values()], value, categoryInput.value, genderInput.value, state.branch);
+            const capFallback = filterMhtRowsByRegion(
+              mapMhtResults([...grouped.values()], value, categoryInput.value, genderInput.value, state.branch),
+              selectedRegion
+            );
             if (capFallback.length) rows = capFallback.slice(0, MAX_RESULTS);
           } catch (optionalCapError) {
             // Keep the original empty-result state if the optional source is absent.
@@ -1604,6 +1877,7 @@
     genderInput.value = "Male";
     domicileInput.value = "MS";
     districtInput.value = "";
+    if (collegeRegionInput) collegeRegionInput.value = "all";
     selectBranch("CSE");
     clearResults();
     if (state.exam === "jee") updateJeeRankHint();
@@ -1615,6 +1889,13 @@
   predictButton.addEventListener("click", predict);
   $("reset").addEventListener("click", resetForm);
   categoryInput.addEventListener("change", () => { if (state.exam === "jee") updateJeeRankHint(); });
+  collegeRegionInput?.addEventListener("change", () => {
+    if (state.exam === "mht") {
+      clearResults();
+      const label = collegeRegionInput.options[collegeRegionInput.selectedIndex]?.text || "selected region";
+      setStatus(`College region set to ${label}. Click Predict to apply this filter.`);
+    }
+  });
   domicileInput.addEventListener("change", () => {
     districtField.hidden = state.exam !== "mht" || domicileInput.value !== "MS";
   });
