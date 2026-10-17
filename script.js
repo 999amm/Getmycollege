@@ -117,6 +117,8 @@
   const districtField = $("districtField");
   const collegeRegionField = $("collegeRegionField");
   const collegeRegionInput = $("collegeRegion");
+  const collegeTypeField = $("collegeTypeField");
+  const collegeTypeInput = $("collegeType");
   const predictButton = $("predict");
   const predictText = $("predictText");
   const dataState = $("dataState");
@@ -251,6 +253,7 @@
     });
     if (directorySection) directorySection.hidden = exam === "jee";
     if (collegeRegionField) collegeRegionField.hidden = exam !== "mht";
+    if (collegeTypeField) collegeTypeField.hidden = exam !== "mht";
     if (exam === "jee") {
       scoreLabel.textContent = categoryInput.value === "OPEN" ? "JEE Main All India Rank (CRL / AIR)" : "JEE Main category rank";
       scoreInput.min = "1";
@@ -1299,17 +1302,65 @@
     });
   }
 
+  function collegeAutonomyKind(resultOrStatus, universityValue = "") {
+    const status = typeof resultOrStatus === "object" && resultOrStatus !== null
+      ? String(resultOrStatus.instituteStatus || resultOrStatus.status || resultOrStatus.institutionType || resultOrStatus.type || "").trim()
+      : String(resultOrStatus || "").trim();
+    const university = typeof resultOrStatus === "object" && resultOrStatus !== null
+      ? String(resultOrStatus.university || resultOrStatus.affiliatingUniversity || resultOrStatus.affiliatedUniversity || "").trim()
+      : String(universityValue || "").trim();
+    const statusText = status.toLowerCase().replace(/[–—]/g, "-");
+    const universityText = university.toLowerCase().replace(/[–—]/g, "-").trim();
+    const sourceText = `${statusText} ${universityText}`;
+
+    // The connected Maharashtra CAP directory uses explicit status labels such as
+    // "Government Autonomous" / "Un-Aided Autonomous" for autonomous institutes.
+    // For affiliated colleges, status may simply be "Government" or "Un-Aided"
+    // and the university field contains the actual affiliating university name.
+    // In that schema, a named affiliating university (not "Autonomous Institute")
+    // plus a populated institute status identifies a non-autonomous college.
+    if (/\bnon[\s-]?autonomous\b/.test(sourceText)) return "non-autonomous";
+    if (/\bautonomous\b/.test(statusText) || /^autonomous institute$/.test(universityText)) return "autonomous";
+
+    const genericUniversity = /^(?:|unknown|not available|not specified|n\/?a|na|[-—])$/i.test(universityText);
+    if (status && university && !genericUniversity && !/autonomous/i.test(universityText)) {
+      return "non-autonomous";
+    }
+    return "unknown";
+  }
+
   function collegeAutonomyLabel(result) {
-    const status = String(result.instituteStatus || result.status || result.institutionType || result.type || "").trim();
-    const university = String(result.university || "").trim();
-    const sourceText = `${status} ${university}`.toLowerCase();
-    if (/\bnon[\s-]?autonomous\b/.test(sourceText)) return "Non-autonomous";
-    if (/\bautonomous\b/.test(sourceText)) return "Autonomous";
-    // The CAP seat matrix has an explicit institute-status field. A populated
-    // status that does not identify the institute as autonomous is treated as
-    // non-autonomous; absent/generic metadata is kept unverified.
-    if (status && !/cap participating institute/i.test(status)) return "Non-autonomous";
+    const kind = collegeAutonomyKind(result);
+    if (kind === "autonomous") return "Autonomous";
+    if (kind === "non-autonomous") return "Non-autonomous";
     return "Not specified in source";
+  }
+
+  function filterMhtRowsByCollegeType(rows, selectedType) {
+    if (!selectedType || selectedType === "all") return rows;
+    return rows.filter((row) => collegeAutonomyKind(row) === selectedType);
+  }
+
+  function buildCollegeAutonomyLookup() {
+    const byCode = new Map();
+    const byName = new Map();
+    const codeKey = (value) => String(value || "").trim().replace(/\.0$/, "").replace(/^0+/, "");
+    for (const row of state.mhtDirectoryRecords || []) {
+      const kind = collegeAutonomyKind(row.status, row.university);
+      const code = codeKey(row.instituteCode || row.instCode);
+      const name = normalizedCollegeName(row.instituteName || row.instName || row.collegeName);
+      if (kind !== "unknown" && code && !byCode.has(code)) byCode.set(code, kind);
+      if (kind !== "unknown" && name && !byName.has(name)) byName.set(name, kind);
+    }
+    return { byCode, byName, codeKey };
+  }
+
+  function scenarioCollegeMatchesType(row, selectedType, lookup) {
+    if (!selectedType || selectedType === "all") return true;
+    const code = lookup.codeKey(row.instituteCode);
+    const name = normalizedCollegeName(row.college);
+    const kind = (code && lookup.byCode.get(code)) || lookup.byName.get(name) || "unknown";
+    return kind === selectedType;
   }
 
   function collegeUniversityLabel(result) {
@@ -1620,13 +1671,13 @@
     try {
       const data = await loadMhtCap1ScenarioData();
       const selectedRegion = collegeRegionInput?.value || "all";
+      const selectedCollegeType = collegeTypeInput?.value || "all";
+      const autonomyLookup = buildCollegeAutonomyLookup();
       const scoped = data.filter((row) => cap1CategoryMatches(row, category, gender, branch)
-        && mhtCollegeMatchesSelectedRegion(row.college, selectedRegion));
+        && mhtCollegeMatchesSelectedRegion(row.college, selectedRegion)
+        && scenarioCollegeMatchesType(row, selectedCollegeType, autonomyLookup));
       const baselineCollegeKeys = new Set(scoped.filter((row) => row.percentile <= basePercentile + 0.000001).map(scenarioCollegeKey));
       const baselineCourseKeys = new Set(scoped.filter((row) => row.percentile <= basePercentile + 0.000001).map(scenarioCourseKey));
-      const alreadyWithinCutoff = new Set((currentRows || [])
-        .filter((row) => row.assessment?.band === "good")
-        .map((row) => normalizedCollegeName(row.college)));
 
       const scenarioOptions = (delta) => {
         const target = Math.min(100, basePercentile + delta);
@@ -1636,7 +1687,6 @@
           const collegeKey = scenarioCollegeKey(row);
           const courseKey = scenarioCourseKey(row);
           if (baselineCollegeKeys.has(collegeKey) || baselineCourseKeys.has(courseKey)) continue;
-          if (alreadyWithinCutoff.has(normalizedCollegeName(row.college))) continue;
           const prior = byCourse.get(collegeKey);
           // Show one entry per institute, using its lowest newly reachable matching cutoff.
           if (!prior || row.percentile < prior.percentile) byCourse.set(collegeKey, row);
@@ -1687,16 +1737,19 @@
     resultTitle.textContent = exam === "jee" ? "JEE Main college shortlist" : "MHT-CET college shortlist";
     resultSub.textContent = exam === "jee"
       ? "All qualifying non-IIT B.Tech records available in the connected JoSAA/CSAB cutoff datasets are shown, including NITs, IIITs and GFTIs; the consolidated historical archive adds 2025 where available. IITs are excluded because they require JEE Advanced. This is not a complete census of private/state-level JEE-accepting colleges; those need their own verified cutoff sources."
-      : `Compared against year- and round-labelled MHT-CET CAP cutoff records from local Maharashtra CAP JSON files and connected public datasets. Results depend on which files load successfully; historical cutoffs are references, not admission guarantees.${collegeRegionInput?.value && collegeRegionInput.value !== "all" ? ` Location filter: ${collegeRegionInput.options[collegeRegionInput.selectedIndex]?.text || collegeRegionInput.value}. Location may be inferred from available source metadata or institute names; verify the official college address.` : ""}`;
+      : `Compared against year- and round-labelled MHT-CET CAP cutoff records from local Maharashtra CAP JSON files and connected public datasets. Results depend on which files load successfully; historical cutoffs are references, not admission guarantees.${collegeRegionInput?.value && collegeRegionInput.value !== "all" ? ` Location filter: ${collegeRegionInput.options[collegeRegionInput.selectedIndex]?.text || collegeRegionInput.value}. Location may be inferred from available source metadata or institute names; verify the official college address.` : ""}${collegeTypeInput?.value && collegeTypeInput.value !== "all" ? ` College type filter: ${collegeTypeInput.options[collegeTypeInput.selectedIndex]?.text || collegeTypeInput.value}. Only explicit autonomy labels from the source are matched.` : ""}`;
 
     if (!rows.length) {
       const regionIsSelected = exam === "mht" && collegeRegionInput?.value && collegeRegionInput.value !== "all";
       const regionLabel = regionIsSelected ? (collegeRegionInput.options[collegeRegionInput.selectedIndex]?.text || collegeRegionInput.value) : "";
+      const typeIsSelected = exam === "mht" && collegeTypeInput?.value && collegeTypeInput.value !== "all";
+      const typeLabel = typeIsSelected ? (collegeTypeInput.options[collegeTypeInput.selectedIndex]?.text || collegeTypeInput.value) : "";
+      const selectedFilters = [regionIsSelected ? regionLabel : "", typeIsSelected ? typeLabel : ""].filter(Boolean).join(" / ");
       bestName.textContent = "No matching cutoff records";
-      bestMeta.textContent = regionIsSelected
-        ? `No qualifying cutoff records were found for ${regionLabel} with these filters. The app has not invented fallback results.`
+      bestMeta.textContent = selectedFilters
+        ? `No qualifying cutoff records were found for ${selectedFilters} with these filters. The app has not invented fallback results.`
         : "No qualifying records were found in the downloaded source for these filters. The app has not invented fallback results.";
-      resultsList.innerHTML = `<div class="empty-state">No records matched these filters. Try another branch/category or retry when the public source is available.${regionIsSelected ? ` You can also set the region to <strong>Anywhere in Maharashtra</strong> and run Predict again. Some source records do not clearly identify a college city.` : ""} A source may be reachable but still contain no matching cutoff rows.</div>`;
+      resultsList.innerHTML = `<div class="empty-state">No records matched these filters. Try another branch/category or retry when the public source is available.${regionIsSelected ? ` You can also set the region to <strong>Anywhere in Maharashtra</strong> and run Predict again. Some source records do not clearly identify a college city.` : ""}${typeIsSelected ? ` You can also select <strong>Any type</strong> to include colleges without a clear autonomy label in the directory.` : ""} A source may be reachable but still contain no matching cutoff rows.</div>`;
     } else {
       const top = rows[0];
       bestName.textContent = top.college;
@@ -1809,9 +1862,13 @@
         if (!directoryRows) directoryRows = await ensureDirectoryLoaded();
         const merged = mergeMhtCutoffsWithDirectory(cutoffData, directoryRows || []);
         const selectedRegion = collegeRegionInput?.value || "all";
-        let rows = filterMhtRowsByRegion(
-          mapMhtResults(merged.length ? merged : cutoffData, value, categoryInput.value, genderInput.value, state.branch),
-          selectedRegion
+        const selectedCollegeType = collegeTypeInput?.value || "all";
+        let rows = filterMhtRowsByCollegeType(
+          filterMhtRowsByRegion(
+            mapMhtResults(merged.length ? merged : cutoffData, value, categoryInput.value, genderInput.value, state.branch),
+            selectedRegion
+          ),
+          selectedCollegeType
         ).slice(0, MAX_RESULTS);
         // If the broad historical feeds contain no rows for these filters, try the
         // dedicated Maharashtra CAP Round-I records when they are actually available.
@@ -1831,9 +1888,12 @@
               }
               course.cutoffsByYear.push({ year: 2025, round: "Round I", category: item.category, percentile: item.percentile, rank: item.meritRank });
             }
-            const capFallback = filterMhtRowsByRegion(
-              mapMhtResults([...grouped.values()], value, categoryInput.value, genderInput.value, state.branch),
-              selectedRegion
+            const capFallback = filterMhtRowsByCollegeType(
+              filterMhtRowsByRegion(
+                mapMhtResults([...grouped.values()], value, categoryInput.value, genderInput.value, state.branch),
+                selectedRegion
+              ),
+              selectedCollegeType
             );
             if (capFallback.length) rows = capFallback.slice(0, MAX_RESULTS);
           } catch (optionalCapError) {
@@ -1878,6 +1938,7 @@
     domicileInput.value = "MS";
     districtInput.value = "";
     if (collegeRegionInput) collegeRegionInput.value = "all";
+    if (collegeTypeInput) collegeTypeInput.value = "all";
     selectBranch("CSE");
     clearResults();
     if (state.exam === "jee") updateJeeRankHint();
@@ -1894,6 +1955,13 @@
       clearResults();
       const label = collegeRegionInput.options[collegeRegionInput.selectedIndex]?.text || "selected region";
       setStatus(`College region set to ${label}. Click Predict to apply this filter.`);
+    }
+  });
+  collegeTypeInput?.addEventListener("change", () => {
+    if (state.exam === "mht") {
+      clearResults();
+      const label = collegeTypeInput.options[collegeTypeInput.selectedIndex]?.text || "selected college type";
+      setStatus(`College type set to ${label}. Click Predict to apply this filter.`);
     }
   });
   domicileInput.addEventListener("change", () => {

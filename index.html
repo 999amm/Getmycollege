@@ -184,6 +184,16 @@
           </select>
           <small>Location is matched using source location details when available, plus common city names in institute names. Verify the college address before making your final choice.</small>
         </div>
+
+        <div class="field" id="collegeTypeField" hidden>
+          <label for="collegeType">What type of college do you prefer?</label>
+          <select id="collegeType" name="collegeType">
+            <option value="all">Any type</option>
+            <option value="autonomous">Autonomous</option>
+            <option value="non-autonomous">Non-autonomous</option>
+          </select>
+          <small>Filtering uses the institute status published in the available CAP directory. Colleges without a clear status are included only under Any type.</small>
+        </div>
       </div>
 
       <div class="branch-section">
@@ -266,6 +276,6 @@
   </main>
 
   <footer class="footer">GetMyCollege · Public cutoff references and directory coverage where available; estimates are not admission guarantees.</footer>
-  <script src="script.js?v=getmycollege-college-details-20261016" defer></script>
+  <script src="script.js?v=getmycollege-college-type-20261017" defer></script>
 </body>
 </html>
